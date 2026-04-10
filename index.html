@@ -10,64 +10,28 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, collection, addDoc, onSnapshot } from 'firebase/firestore';
 
 // --- FIREBASE INIT ---
-// Konfigurasi tahan banting untuk Canvas, Vite, maupun CRA
-const getFirebaseConfig = () => {
-  // 1. Lingkungan Canvas (Aman)
-  if (typeof __firebase_config !== 'undefined') {
-    return JSON.parse(__firebase_config);
-  }
-  
-  // 2. Lingkungan Vite (seperti yang di-deploy ke Vercel via Vite)
-  try {
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      return {
-        apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "dummy",
-        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "dummy",
-        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "dummy",
-        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "dummy",
-        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "dummy",
-        appId: import.meta.env.VITE_FIREBASE_APP_ID || "dummy"
-      };
-    }
-  } catch (error) {
-    // Abaikan jika bukan Vite
-  }
+let firebaseConfig;
+// Menggunakan konfigurasi platform saat diuji coba, dan menggunakan konfigurasi khusus-devina saat di-deploy ke Vercel/GitHub
+if (typeof __firebase_config !== 'undefined') {
+  firebaseConfig = JSON.parse(__firebase_config);
+} else {
+  firebaseConfig = {
+    apiKey: "AIzaSyB673chpa6SJ-V2q6wUknWAMZHLn7U3Wmg",
+    authDomain: "khusus-devina.firebaseapp.com",
+    databaseURL: "https://khusus-devina-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "khusus-devina",
+    storageBucket: "khusus-devina.firebasestorage.app",
+    messagingSenderId: "1042025250177",
+    appId: "1:1042025250177:web:461b4aab6f63617d14bc80"
+  };
+}
 
-  // 3. Fallback CRA (Create React App) / Node.js
-  try {
-    if (typeof process !== 'undefined' && process.env) {
-      return {
-        apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "dummy",
-        authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "dummy",
-        projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "dummy",
-        storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "dummy",
-        messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "dummy",
-        appId: process.env.REACT_APP_FIREBASE_APP_ID || "dummy"
-      };
-    }
-  } catch (error) {
-    // Abaikan jika process tidak ditemukan
-  }
-
-  return { apiKey: "dummy", authDomain: "dummy", projectId: "dummy", storageBucket: "dummy", messagingSenderId: "dummy", appId: "dummy" };
-};
-
-const firebaseConfig = getFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Tangkap App ID dengan aman
-let fallbackAppId = 'utbk-pro-app';
-try {
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_APP_ID) {
-    fallbackAppId = import.meta.env.VITE_FIREBASE_APP_ID;
-  } else if (typeof process !== 'undefined' && process.env && process.env.REACT_APP_FIREBASE_APP_ID) {
-    fallbackAppId = process.env.REACT_APP_FIREBASE_APP_ID;
-  }
-} catch(e) {}
-
-const appId = typeof __app_id !== 'undefined' ? __app_id : fallbackAppId;
+// ID Unik untuk aplikasi ini
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'khusus-devina-app';
 
 // --- MOCK DATA ---
 const SUBJECTS = [
@@ -323,7 +287,7 @@ const Navbar = ({ currentRoute, setCurrentRoute, user }) => {
                 </div>
               </>
             ) : (
-              <span className="text-sm text-gray-500 font-medium animate-pulse">Menghubungkan ke Cloud...</span>
+              <span className="text-sm text-gray-500 font-medium animate-pulse">Menghubungkan...</span>
             )}
           </div>
         </div>
@@ -902,7 +866,7 @@ export default function App() {
   const [quizResult, setQuizResult] = useState(null);
   const [history, setHistory] = useState([]);
 
-  // 1. Inisialisasi Auth Firebase
+  // 1. Inisialisasi Auth Firebase dengan Penanganan Error (Fallback Offline)
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -913,17 +877,23 @@ export default function App() {
         }
       } catch (error) {
         console.error("Auth error:", error);
+        // Jika autentikasi gagal (misal karena tidak diaktifkan di Console), gunakan mode offline
+        setUser({ uid: 'local', displayName: 'Pejuang PTN (Mode Offline)' });
       }
     };
     initAuth();
     
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        setUser(firebaseUser);
+      }
+    });
     return () => unsubscribe();
   }, []);
 
-  // 2. Fetch History Data Real-time
+  // 2. Fetch History Data Real-time (Lewati jika mode offline)
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.uid === 'local') return;
     
     const historyRef = collection(db, 'artifacts', appId, 'users', user.uid, 'history');
     const unsubscribe = onSnapshot(historyRef, 
@@ -944,6 +914,22 @@ export default function App() {
   // 3. Fungsi Save Result
   const saveResultToCloud = async (resultData) => {
     if (!user) return;
+
+    // Simpan ke memori lokal sementara jika Firebase Auth gagal
+    if (user.uid === 'local') {
+      setHistory(prev => [{
+        id: Date.now().toString(),
+        subject: resultData.subject,
+        score: resultData.score,
+        correct: resultData.correct,
+        wrong: resultData.wrong,
+        blank: resultData.blank,
+        timestamp: Date.now()
+      }, ...prev]);
+      return;
+    }
+
+    // Jika terkoneksi Firebase, simpan ke Firestore
     try {
       const historyRef = collection(db, 'artifacts', appId, 'users', user.uid, 'history');
       await addDoc(historyRef, {
