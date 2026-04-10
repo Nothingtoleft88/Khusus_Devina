@@ -10,27 +10,64 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, collection, addDoc, onSnapshot } from 'firebase/firestore';
 
 // --- FIREBASE INIT ---
-// Konfigurasi agar aman berjalan di platform ini maupun saat di-deploy ke Vercel
+// Konfigurasi tahan banting untuk Canvas, Vite, maupun CRA
 const getFirebaseConfig = () => {
+  // 1. Lingkungan Canvas (Aman)
   if (typeof __firebase_config !== 'undefined') {
     return JSON.parse(__firebase_config);
   }
-  // Fallback untuk Vercel (gunakan Environment Variables di Vercel Settings nantinya)
-  return {
-    apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "dummy",
-    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "dummy",
-    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "dummy",
-    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "dummy",
-    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "dummy",
-    appId: process.env.REACT_APP_FIREBASE_APP_ID || "dummy"
-  };
+  
+  // 2. Lingkungan Vite (seperti yang di-deploy ke Vercel via Vite)
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      return {
+        apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "dummy",
+        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "dummy",
+        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "dummy",
+        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "dummy",
+        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "dummy",
+        appId: import.meta.env.VITE_FIREBASE_APP_ID || "dummy"
+      };
+    }
+  } catch (error) {
+    // Abaikan jika bukan Vite
+  }
+
+  // 3. Fallback CRA (Create React App) / Node.js
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      return {
+        apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "dummy",
+        authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "dummy",
+        projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "dummy",
+        storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "dummy",
+        messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "dummy",
+        appId: process.env.REACT_APP_FIREBASE_APP_ID || "dummy"
+      };
+    }
+  } catch (error) {
+    // Abaikan jika process tidak ditemukan
+  }
+
+  return { apiKey: "dummy", authDomain: "dummy", projectId: "dummy", storageBucket: "dummy", messagingSenderId: "dummy", appId: "dummy" };
 };
 
 const firebaseConfig = getFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'utbk-pro-app';
+
+// Tangkap App ID dengan aman
+let fallbackAppId = 'utbk-pro-app';
+try {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_APP_ID) {
+    fallbackAppId = import.meta.env.VITE_FIREBASE_APP_ID;
+  } else if (typeof process !== 'undefined' && process.env && process.env.REACT_APP_FIREBASE_APP_ID) {
+    fallbackAppId = process.env.REACT_APP_FIREBASE_APP_ID;
+  }
+} catch(e) {}
+
+const appId = typeof __app_id !== 'undefined' ? __app_id : fallbackAppId;
 
 // --- MOCK DATA ---
 const SUBJECTS = [
